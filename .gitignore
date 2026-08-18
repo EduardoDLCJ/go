@@ -1,0 +1,32 @@
+# Variables de entorno
+.env
+.env.example
+
+# Binarios compilados
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Carpetas de build
+bin/
+dist/
+
+# Cobertura de pruebas
+*.out
+coverage.out
+
+# VS Code (opcional)
+.vscode/
+
+# JetBrains (opcional)
+.idea/
+
+# Windows
+Thumbs.db
+
+# macOS
+.DS_Store
+
+.gocache
