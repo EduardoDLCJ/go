@@ -133,6 +133,15 @@ func main() {
 		mapRoutes.GET("/providers", providerHandler.Nearby)
 	}
 
+	// --- Backward-compatible map routes ---
+	legacyMapRoutes := v1.Group("/auth/map")
+	legacyMapRoutes.Use(readLimiter.Middleware())
+	{
+		legacyMapRoutes.GET("/points", mapHandler.Points)
+		legacyMapRoutes.GET("/heatmap", mapHandler.Heatmap)
+		legacyMapRoutes.GET("/providers", providerHandler.Nearby)
+	}
+
 	// --- Speedtest runner routes (for real speed measurement) ---
 	runner := v1.Group("/speedtest")
 	{
