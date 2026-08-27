@@ -141,6 +141,12 @@ func (h *ProviderHandler) Nearby(c *gin.Context) {
 		    AVG(nearby.download_mbps) AS avg_download,
 		    AVG(nearby.upload_mbps) AS avg_upload,
 		    AVG(nearby.ping_ms) AS avg_ping,
+		    AVG(nearby.latitude) AS avg_latitude,
+		    AVG(nearby.longitude) AS avg_longitude,
+		    MIN(nearby.latitude) AS min_latitude,
+		    MAX(nearby.latitude) AS max_latitude,
+		    MIN(nearby.longitude) AS min_longitude,
+		    MAX(nearby.longitude) AS max_longitude,
 		    MIN(nearby.distance_km) AS min_distance,
 		    AVG(nearby.distance_km) AS avg_distance,
 		    MAX(nearby.created_at) AS last_test_at
@@ -150,6 +156,8 @@ func (h *ProviderHandler) Nearby(c *gin.Context) {
 		        s.download_mbps,
 		        s.upload_mbps,
 		        s.ping_ms,
+		        s.latitude,
+		        s.longitude,
 		        s.created_at,
 		        (6371 * ACOS(
 		            LEAST(1.0, GREATEST(-1.0,
@@ -188,6 +196,8 @@ func (h *ProviderHandler) Nearby(c *gin.Context) {
 		if err := rows.Scan(
 			&p.ProviderID, &p.Nombre, &p.TotalTests,
 			&p.AvgDownload, &p.AvgUpload, &p.AvgPing,
+			&p.AvgLatitude, &p.AvgLongitude,
+			&p.MinLatitude, &p.MaxLatitude, &p.MinLongitude, &p.MaxLongitude,
 			&p.MinDistanceKm, &p.AvgDistanceKm, &p.LastTestAt,
 		); err != nil {
 			log.Printf("Error scanning nearby provider row: %v", err)

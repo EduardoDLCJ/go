@@ -39,6 +39,12 @@ type NearbyProviderStats struct {
 	AvgDownload   float64   `json:"avg_download_mbps"`
 	AvgUpload     float64   `json:"avg_upload_mbps"`
 	AvgPing       float64   `json:"avg_ping_ms"`
+	AvgLatitude   float64   `json:"avg_latitude"`
+	AvgLongitude  float64   `json:"avg_longitude"`
+	MinLatitude   float64   `json:"min_latitude"`
+	MaxLatitude   float64   `json:"max_latitude"`
+	MinLongitude  float64   `json:"min_longitude"`
+	MaxLongitude  float64   `json:"max_longitude"`
 	TotalTests    int       `json:"total_tests"`
 	Score         float64   `json:"score"`
 	Confidence    string    `json:"confidence"`
