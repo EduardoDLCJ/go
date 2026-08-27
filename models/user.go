@@ -54,3 +54,9 @@ func (u *User) ToResponse() UserResponse {
 		CreatedAt: u.CreatedAt,
 	}
 }
+
+// GoogleAuthRequest is the expected body for Google authentication.
+type GoogleAuthRequest struct {
+	GoogleToken string `json:"google_token" binding:"required"`
+}
+
