@@ -8,7 +8,7 @@ import (
 
 const (
 	// DefaultRadiusKm keeps nearby searches focused on the user's immediate area.
-	DefaultRadiusKm = 0.7
+	DefaultRadiusKm = 1.0
 	MaxRadiusKm     = 10.0
 )
 
