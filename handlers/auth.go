@@ -70,6 +70,10 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		return
 	}
 
+	if req.Password == "" {
+		utils.ValidationError(c, "La contraseña no puede estar vacía")
+		return
+	}
 	// Hash password
 	hashedPassword, err := services.HashPassword(req.Password)
 	if err != nil {
@@ -130,10 +134,11 @@ func (h *AuthHandler) Login(c *gin.Context) {
 
 	// Find user by email
 	var user models.User
+	var password sql.NullString
 	err := database.DB.QueryRow(
 		database.Rebind("SELECT id, usuario, correo, password, created_at, updated_at FROM users WHERE correo = ?"),
 		req.Correo,
-	).Scan(&user.ID, &user.Usuario, &user.Correo, &user.Password, &user.CreatedAt, &user.UpdatedAt)
+	).Scan(&user.ID, &user.Usuario, &user.Correo, &password, &user.CreatedAt, &user.UpdatedAt)
 
 	if err == sql.ErrNoRows {
 		// Use generic message to prevent user enumeration
@@ -146,8 +151,14 @@ func (h *AuthHandler) Login(c *gin.Context) {
 		return
 	}
 
-	// Verify password
-	if !services.CheckPassword(user.Password, req.Password) {
+	// Google-linked accounts must create a local password before using this login.
+	if !password.Valid {
+		utils.Forbidden(c, "Esta cuenta está vinculada con Google. Debes crear una contraseña para iniciar sesión con correo y contraseña")
+		return
+	}
+
+	// Verify password.
+	if !services.CheckPassword(password.String, req.Password) {
 		utils.Unauthorized(c, "Credenciales inválidas")
 		return
 	}
@@ -290,12 +301,21 @@ func (h *AuthHandler) GoogleAuth(c *gin.Context) {
 		return
 	}
 
-	// Update user to set google_id where email matches, and return the user details
+	// Create the account on first Google sign-in, then keep the existing linking flow.
 	var user models.User
-	err = database.DB.QueryRow(
-		database.Rebind("UPDATE users SET google_id = ? WHERE correo = ? RETURNING id, usuario, correo, created_at, updated_at"),
-		googleID, email,
-	).Scan(&user.ID, &user.Usuario, &user.Correo, &user.CreatedAt, &user.UpdatedAt)
+	err = database.DB.QueryRow(database.Rebind("SELECT id FROM users WHERE correo = ?"), email).Scan(&user.ID)
+	if err == sql.ErrNoRows {
+		username := googleUsername(email, googleID)
+		err = database.DB.QueryRow(
+			database.Rebind("INSERT INTO users (usuario, correo, password, google_id) VALUES (?, ?, NULL, ?) RETURNING id, usuario, correo, created_at, updated_at"),
+			username, email, googleID,
+		).Scan(&user.ID, &user.Usuario, &user.Correo, &user.CreatedAt, &user.UpdatedAt)
+	} else if err == nil {
+		err = database.DB.QueryRow(
+			database.Rebind("UPDATE users SET google_id = ? WHERE correo = ? RETURNING id, usuario, correo, created_at, updated_at"),
+			googleID, email,
+		).Scan(&user.ID, &user.Usuario, &user.Correo, &user.CreatedAt, &user.UpdatedAt)
+	}
 
 	if err == sql.ErrNoRows {
 		utils.Error(c, http.StatusNotFound, "No existe ningún usuario registrado con el correo de esta cuenta de Google")
@@ -334,4 +354,18 @@ func (h *AuthHandler) GoogleAuth(c *gin.Context) {
 	}
 
 	utils.Success(c, http.StatusOK, "Autenticación de Google exitosa", response)
+}
+
+func googleUsername(email, googleID string) string {
+	username := strings.SplitN(email, "@", 2)[0]
+	username = utils.SanitizeString(username)
+	if len(username) >= 3 && len(username) <= 50 {
+		return username
+	}
+
+	username = "google_" + googleID
+	if len(username) > 50 {
+		username = username[:50]
+	}
+	return username
 }

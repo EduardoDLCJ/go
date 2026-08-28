@@ -9,11 +9,15 @@ CREATE TABLE IF NOT EXISTS users (
     id         SERIAL          PRIMARY KEY,
     usuario    VARCHAR(50)     NOT NULL UNIQUE,
     correo     VARCHAR(100)    NOT NULL UNIQUE,
-    password   VARCHAR(255)    NOT NULL,
-    google_id  VARCHAR(255)    NOT NULL UNIQUE,
+    password   VARCHAR(255)    NULL,
+    google_id  VARCHAR(255)    NULL UNIQUE,
     created_at TIMESTAMP       DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP       DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Keep existing installations compatible with Google-only accounts.
+ALTER TABLE users ALTER COLUMN password DROP NOT NULL;
+ALTER TABLE users ALTER COLUMN google_id DROP NOT NULL;
 
 -- -------------------------------------------
 -- ISP Providers
