@@ -62,44 +62,15 @@ func (h *ProviderHandler) List(c *gin.Context) {
 	utils.Success(c, http.StatusOK, "", results)
 }
 
-// Nearby returns providers inferred from speedtests near a location.
+// Nearby returns providers inferred from speedtests near a location or within a bounding box.
 // GET /api/v1/map/providers?lat=20.67&lng=-103.35&radius=2&limit=20
+// GET /api/v1/map/providers?min_lat=20.45&max_lat=20.50&min_lng=-103.60&max_lng=-103.50&limit=20
 func (h *ProviderHandler) Nearby(c *gin.Context) {
-	lat, err := strconv.ParseFloat(c.Query("lat"), 64)
-	if err != nil {
-		utils.ValidationError(c, "Parámetro 'lat' requerido y debe ser numérico")
-		return
-	}
-
-	lng, err := strconv.ParseFloat(c.Query("lng"), 64)
-	if err != nil {
-		utils.ValidationError(c, "Parámetro 'lng' requerido y debe ser numérico")
-		return
-	}
-
-	if err := utils.ValidateCoordinates(lat, lng); err != nil {
-		utils.ValidationError(c, err.Error())
-		return
-	}
-
-	radius := utils.DefaultRadiusKm
-	if radiusParam := c.Query("radius"); radiusParam != "" {
-		parsed, err := strconv.ParseFloat(radiusParam, 64)
-		if err != nil {
-			utils.ValidationError(c, "Parámetro 'radius' debe ser numérico")
-			return
-		}
-		radius = utils.ValidateRadius(parsed)
-	}
-
 	limit := 20
 	if limitParam := c.Query("limit"); limitParam != "" {
-		parsed, err := strconv.Atoi(limitParam)
-		if err != nil {
-			utils.ValidationError(c, "Parámetro 'limit' debe ser numérico")
-			return
+		if parsed, err := strconv.Atoi(limitParam); err == nil {
+			limit = parsed
 		}
-		limit = parsed
 	}
 	if limit < 1 {
 		limit = 20
@@ -110,79 +81,217 @@ func (h *ProviderHandler) Nearby(c *gin.Context) {
 
 	minTests := 1
 	if minTestsParam := c.Query("min_tests"); minTestsParam != "" {
-		parsed, err := strconv.Atoi(minTestsParam)
-		if err != nil {
-			utils.ValidationError(c, "Parámetro 'min_tests' debe ser numérico")
-			return
+		if parsed, err := strconv.Atoi(minTestsParam); err == nil {
+			minTests = parsed
 		}
-		minTests = parsed
 	}
 	if minTests < 1 {
 		minTests = 1
 	}
 
-	deltaLat := radius / 111.32
-	cosLat := math.Cos(lat * math.Pi / 180)
-	deltaLng := 180.0
-	if math.Abs(cosLat) > 0.000001 {
-		deltaLng = radius / (111.32 * math.Abs(cosLat))
+	minLatStr := c.Query("min_lat")
+	maxLatStr := c.Query("max_lat")
+	minLngStr := c.Query("min_lng")
+	maxLngStr := c.Query("max_lng")
+
+	isBoundingBox := minLatStr != "" && maxLatStr != "" && minLngStr != "" && maxLngStr != ""
+
+	var (
+		lat, lng float64
+		minLat, maxLat, minLng, maxLng float64
+		radius float64
+		hasRadius bool
+	)
+
+	if isBoundingBox {
+		var err error
+		minLat, err = strconv.ParseFloat(minLatStr, 64)
+		if err != nil {
+			utils.ValidationError(c, "Parámetro 'min_lat' debe ser numérico")
+			return
+		}
+		maxLat, err = strconv.ParseFloat(maxLatStr, 64)
+		if err != nil {
+			utils.ValidationError(c, "Parámetro 'max_lat' debe ser numérico")
+			return
+		}
+		minLng, err = strconv.ParseFloat(minLngStr, 64)
+		if err != nil {
+			utils.ValidationError(c, "Parámetro 'min_lng' debe ser numérico")
+			return
+		}
+		maxLng, err = strconv.ParseFloat(maxLngStr, 64)
+		if err != nil {
+			utils.ValidationError(c, "Parámetro 'max_lng' debe ser numérico")
+			return
+		}
+
+		if err := utils.ValidateCoordinates(minLat, minLng); err != nil {
+			utils.ValidationError(c, "Coordenadas mínimas inválidas: "+err.Error())
+			return
+		}
+		if err := utils.ValidateCoordinates(maxLat, maxLng); err != nil {
+			utils.ValidationError(c, "Coordenadas máximas inválidas: "+err.Error())
+			return
+		}
+
+		if minLat > maxLat {
+			minLat, maxLat = maxLat, minLat
+		}
+		if minLng > maxLng {
+			minLng, maxLng = maxLng, minLng
+		}
+
+		lat = (minLat + maxLat) / 2.0
+		lng = (minLng + maxLng) / 2.0
+	} else {
+		var err error
+		lat, err = strconv.ParseFloat(c.Query("lat"), 64)
+		if err != nil {
+			utils.ValidationError(c, "Parámetro 'lat' requerido y debe ser numérico (o indicar min_lat, max_lat, min_lng, max_lng)")
+			return
+		}
+
+		lng, err = strconv.ParseFloat(c.Query("lng"), 64)
+		if err != nil {
+			utils.ValidationError(c, "Parámetro 'lng' requerido y debe ser numérico (o indicar min_lat, max_lat, min_lng, max_lng)")
+			return
+		}
+
+		if err := utils.ValidateCoordinates(lat, lng); err != nil {
+			utils.ValidationError(c, err.Error())
+			return
+		}
+
+		radius = utils.DefaultRadiusKm
+		if radiusParam := c.Query("radius"); radiusParam != "" {
+			parsed, err := strconv.ParseFloat(radiusParam, 64)
+			if err != nil {
+				utils.ValidationError(c, "Parámetro 'radius' debe ser numérico")
+				return
+			}
+			radius = utils.ValidateRadius(parsed)
+		}
+		hasRadius = true
+
+		deltaLat := radius / 111.32
+		cosLat := math.Cos(lat * math.Pi / 180)
+		deltaLng := 180.0
+		if math.Abs(cosLat) > 0.000001 {
+			deltaLng = radius / (111.32 * math.Abs(cosLat))
+		}
+
+		minLat = math.Max(-90, lat-deltaLat)
+		maxLat = math.Min(90, lat+deltaLat)
+		minLng = math.Max(-180, lng-deltaLng)
+		maxLng = math.Min(180, lng+deltaLng)
 	}
 
-	minLat := math.Max(-90, lat-deltaLat)
-	maxLat := math.Min(90, lat+deltaLat)
-	minLng := math.Max(-180, lng-deltaLng)
-	maxLng := math.Min(180, lng+deltaLng)
+	var query string
+	var args []interface{}
 
-	query := `
-		SELECT
-		    p.id,
-		    p.nombre,
-		    COUNT(*) AS total_tests,
-		    AVG(nearby.download_mbps) AS avg_download,
-		    AVG(nearby.upload_mbps) AS avg_upload,
-		    AVG(nearby.ping_ms) AS avg_ping,
-		    AVG(nearby.latitude) AS avg_latitude,
-		    AVG(nearby.longitude) AS avg_longitude,
-		    MIN(nearby.latitude) AS min_latitude,
-		    MAX(nearby.latitude) AS max_latitude,
-		    MIN(nearby.longitude) AS min_longitude,
-		    MAX(nearby.longitude) AS max_longitude,
-		    MIN(nearby.distance_km) AS min_distance,
-		    AVG(nearby.distance_km) AS avg_distance,
-		    MAX(nearby.created_at) AS last_test_at
-		FROM (
-		    SELECT
-		        s.provider_id,
-		        s.download_mbps,
-		        s.upload_mbps,
-		        s.ping_ms,
-		        s.latitude,
-		        s.longitude,
-		        s.created_at,
-		        (6371 * ACOS(
-		            LEAST(1.0, GREATEST(-1.0,
-		                COS(RADIANS(?)) * COS(RADIANS(s.latitude))
-		                * COS(RADIANS(s.longitude) - RADIANS(?))
-		                + SIN(RADIANS(?)) * SIN(RADIANS(s.latitude))
-		            ))
-		        )) AS distance_km
-		    FROM speedtests s
-		    WHERE s.latitude BETWEEN ? AND ?
-		      AND s.longitude BETWEEN ? AND ?
-		) nearby
-		JOIN providers p ON p.id = nearby.provider_id
-		WHERE nearby.distance_km <= ?
-		GROUP BY p.id, p.nombre
-		HAVING COUNT(*) >= ?
-		ORDER BY total_tests DESC, avg_download DESC
-		LIMIT ?`
+	if isBoundingBox {
+		query = `
+			SELECT
+			    p.id,
+			    p.nombre,
+			    COUNT(*) AS total_tests,
+			    AVG(nearby.download_mbps) AS avg_download,
+			    AVG(nearby.upload_mbps) AS avg_upload,
+			    AVG(nearby.ping_ms) AS avg_ping,
+			    AVG(nearby.latitude) AS avg_latitude,
+			    AVG(nearby.longitude) AS avg_longitude,
+			    MIN(nearby.latitude) AS min_latitude,
+			    MAX(nearby.latitude) AS max_latitude,
+			    MIN(nearby.longitude) AS min_longitude,
+			    MAX(nearby.longitude) AS max_longitude,
+			    MIN(nearby.distance_km) AS min_distance,
+			    AVG(nearby.distance_km) AS avg_distance,
+			    MAX(nearby.created_at) AS last_test_at
+			FROM (
+			    SELECT
+			        s.provider_id,
+			        s.download_mbps,
+			        s.upload_mbps,
+			        s.ping_ms,
+			        s.latitude,
+			        s.longitude,
+			        s.created_at,
+			        (6371 * ACOS(
+			            LEAST(1.0, GREATEST(-1.0,
+			                COS(RADIANS(?)) * COS(RADIANS(s.latitude))
+			                * COS(RADIANS(s.longitude) - RADIANS(?))
+			                + SIN(RADIANS(?)) * SIN(RADIANS(s.latitude))
+			            ))
+			        )) AS distance_km
+			    FROM speedtests s
+			    WHERE s.latitude BETWEEN ? AND ?
+			      AND s.longitude BETWEEN ? AND ?
+			) nearby
+			JOIN providers p ON p.id = nearby.provider_id
+			GROUP BY p.id, p.nombre
+			HAVING COUNT(*) >= ?
+			ORDER BY total_tests DESC, avg_download DESC
+			LIMIT ?`
 
-	rows, err := database.DB.Query(
-		database.Rebind(query),
-		lat, lng, lat,
-		minLat, maxLat, minLng, maxLng,
-		radius, minTests, limit,
-	)
+		args = []interface{}{
+			lat, lng, lat,
+			minLat, maxLat, minLng, maxLng,
+			minTests, limit,
+		}
+	} else {
+		query = `
+			SELECT
+			    p.id,
+			    p.nombre,
+			    COUNT(*) AS total_tests,
+			    AVG(nearby.download_mbps) AS avg_download,
+			    AVG(nearby.upload_mbps) AS avg_upload,
+			    AVG(nearby.ping_ms) AS avg_ping,
+			    AVG(nearby.latitude) AS avg_latitude,
+			    AVG(nearby.longitude) AS avg_longitude,
+			    MIN(nearby.latitude) AS min_latitude,
+			    MAX(nearby.latitude) AS max_latitude,
+			    MIN(nearby.longitude) AS min_longitude,
+			    MAX(nearby.longitude) AS max_longitude,
+			    MIN(nearby.distance_km) AS min_distance,
+			    AVG(nearby.distance_km) AS avg_distance,
+			    MAX(nearby.created_at) AS last_test_at
+			FROM (
+			    SELECT
+			        s.provider_id,
+			        s.download_mbps,
+			        s.upload_mbps,
+			        s.ping_ms,
+			        s.latitude,
+			        s.longitude,
+			        s.created_at,
+			        (6371 * ACOS(
+			            LEAST(1.0, GREATEST(-1.0,
+			                COS(RADIANS(?)) * COS(RADIANS(s.latitude))
+			                * COS(RADIANS(s.longitude) - RADIANS(?))
+			                + SIN(RADIANS(?)) * SIN(RADIANS(s.latitude))
+			            ))
+			        )) AS distance_km
+			    FROM speedtests s
+			    WHERE s.latitude BETWEEN ? AND ?
+			      AND s.longitude BETWEEN ? AND ?
+			) nearby
+			JOIN providers p ON p.id = nearby.provider_id
+			WHERE nearby.distance_km <= ?
+			GROUP BY p.id, p.nombre
+			HAVING COUNT(*) >= ?
+			ORDER BY total_tests DESC, avg_download DESC
+			LIMIT ?`
+
+		args = []interface{}{
+			lat, lng, lat,
+			minLat, maxLat, minLng, maxLng,
+			radius, minTests, limit,
+		}
+	}
+
+	rows, err := database.DB.Query(database.Rebind(query), args...)
 	if err != nil {
 		log.Printf("Error querying nearby providers: %v", err)
 		utils.InternalError(c, "")
@@ -214,15 +323,29 @@ func (h *ProviderHandler) Nearby(c *gin.Context) {
 		return
 	}
 
-	utils.Success(c, http.StatusOK, "", gin.H{
+	responseData := gin.H{
 		"center": gin.H{
 			"lat": lat,
 			"lng": lng,
 		},
-		"radius_km": radius,
 		"count":     len(results),
 		"providers": results,
-	})
+	}
+
+	if hasRadius {
+		responseData["radius_km"] = radius
+	}
+
+	if isBoundingBox {
+		responseData["bounding_box"] = gin.H{
+			"min_lat": minLat,
+			"max_lat": maxLat,
+			"min_lng": minLng,
+			"max_lng": maxLng,
+		}
+	}
+
+	utils.Success(c, http.StatusOK, "", responseData)
 }
 
 // GetByID returns detailed statistics for a single provider.

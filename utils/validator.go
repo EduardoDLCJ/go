@@ -8,8 +8,8 @@ import (
 
 const (
 	// DefaultRadiusKm keeps nearby searches focused on the user's immediate area.
-	DefaultRadiusKm = 0.5
-	MaxRadiusKm     = 10.0
+	DefaultRadiusKm = 1.5
+	MaxRadiusKm     = 20.0
 )
 
 // SanitizeString trims whitespace and escapes HTML entities to prevent XSS.
